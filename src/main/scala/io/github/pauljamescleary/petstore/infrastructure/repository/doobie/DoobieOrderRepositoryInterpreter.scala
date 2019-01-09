@@ -7,8 +7,9 @@ import cats.data.OptionT
 import cats.implicits._
 import doobie._
 import doobie.implicits._
+import io.chrisdavenport.log4cats.Logger
 import io.github.pauljamescleary.petstore.domain.orders
-import orders.{OrderRepositoryAlgebra, OrderStatus, Order}
+import orders.{Order, OrderRepositoryAlgebra, OrderStatus}
 
 private object OrderSQL {
   /* We require type StatusMeta to handle our ADT Status */
@@ -19,39 +20,46 @@ private object OrderSQL {
   implicit val DateTimeMeta: Meta[Instant] =
     Meta[java.sql.Timestamp].imap(_.toInstant)(java.sql.Timestamp.from _)
 
-  def select(orderId: Long): Query0[Order] = sql"""
+  def select(orderId: Long)(implicit lh: LogHandler): Query0[Order] = sql"""
     SELECT PET_ID, SHIP_DATE, STATUS, COMPLETE, ID
     FROM ORDERS
     WHERE ID = $orderId
   """.query[Order]
 
-  def insert(order : Order) : Update0 = sql"""
+  def insert(order: Order)(implicit lh: LogHandler): Update0 = sql"""
     INSERT INTO ORDERS (PET_ID, SHIP_DATE, STATUS, COMPLETE)
     VALUES (${order.petId}, ${order.shipDate}, ${order.status}, ${order.complete})
   """.update
 
-  def delete(orderId : Long) : Update0 = sql"""
+  def delete(orderId: Long)(implicit lh: LogHandler): Update0 = sql"""
     DELETE FROM ORDERS
     WHERE ID = $orderId
   """.update
 }
 
-class DoobieOrderRepositoryInterpreter[F[_]: Monad](val xa: Transactor[F])
-    extends OrderRepositoryAlgebra[F] {
+class DoobieOrderRepositoryInterpreter[F[_]: Monad](
+    val xa: Transactor[F],
+    logger: Logger[F]
+) extends OrderRepositoryAlgebra[F] {
   import OrderSQL._
 
+  private implicit val logHandler: LogHandler = Log4CatsLogHandler[F](logger)
+
   def create(order: Order): F[Order] =
-    insert(order).withUniqueGeneratedKeys[Long]("ID").map(id => order.copy(id = id.some)).transact(xa)
+    insert(order)
+      .withUniqueGeneratedKeys[Long]("ID")
+      .map(id => order.copy(id = id.some))
+      .transact(xa)
 
   def get(orderId: Long): F[Option[Order]] = OrderSQL.select(orderId).option.transact(xa)
 
   def delete(orderId: Long): F[Option[Order]] =
-    OptionT(get(orderId)).semiflatMap(order =>
-      OrderSQL.delete(orderId).run.transact(xa).as(order)
-    ).value
+    OptionT(get(orderId))
+      .semiflatMap(order => OrderSQL.delete(orderId).run.transact(xa).as(order))
+      .value
 }
 
 object DoobieOrderRepositoryInterpreter {
-  def apply[F[_]: Monad](xa: Transactor[F]): DoobieOrderRepositoryInterpreter[F] =
-    new DoobieOrderRepositoryInterpreter(xa)
+  def apply[F[_]: Monad](xa: Transactor[F], logger: Logger[F]): DoobieOrderRepositoryInterpreter[F] =
+    new DoobieOrderRepositoryInterpreter(xa, logger)
 }

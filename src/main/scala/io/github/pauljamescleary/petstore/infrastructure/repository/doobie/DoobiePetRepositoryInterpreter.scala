@@ -7,6 +7,7 @@ import doobie._
 import doobie.implicits._
 import io.github.pauljamescleary.petstore.domain.pets.{Pet, PetRepositoryAlgebra, PetStatus}
 import SQLPagination._
+import io.chrisdavenport.log4cats.Logger
 
 private object PetSQL {
   /* We require type StatusMeta to handle our ADT Status */
@@ -17,47 +18,48 @@ private object PetSQL {
   implicit val SetStringMeta: Meta[Set[String]] =
     Meta[String].imap(_.split(',').toSet)(_.mkString(","))
 
-  def insert(pet: Pet) : Update0 = sql"""
+  def insert(pet: Pet)(implicit lh: LogHandler): Update0 = sql"""
     INSERT INTO PET (NAME, CATEGORY, BIO, STATUS, TAGS, PHOTO_URLS)
     VALUES (${pet.name}, ${pet.category}, ${pet.bio}, ${pet.status}, ${pet.tags}, ${pet.photoUrls})
   """.update
 
-  def update(pet: Pet, id: Long) : Update0 = sql"""
+  def update(pet: Pet, id: Long)(implicit lh: LogHandler): Update0 = sql"""
     UPDATE PET
     SET NAME = ${pet.name}, BIO = ${pet.bio}, STATUS = ${pet.status}, TAGS = ${pet.tags}, PHOTO_URLS = ${pet.photoUrls}
     WHERE id = $id
   """.update
 
-  def select(id: Long) : Query0[Pet] = sql"""
+  def select(id: Long)(implicit lh: LogHandler): Query0[Pet] = sql"""
     SELECT NAME, CATEGORY, BIO, STATUS, TAGS, PHOTO_URLS, ID
     FROM PET
     WHERE ID = $id
   """.query
 
-  def delete(id: Long) : Update0 = sql"""
+  def delete(id: Long)(implicit lh: LogHandler): Update0 = sql"""
     DELETE FROM PET WHERE ID = $id
   """.update
 
-  def selectByNameAndCategory(name: String, category: String) : Query0[Pet] = sql"""
+  def selectByNameAndCategory(name: String, category: String)(implicit lh: LogHandler): Query0[Pet] = sql"""
     SELECT NAME, CATEGORY, BIO, STATUS, TAGS, PHOTO_URLS, ID
     FROM PET
     WHERE NAME = $name AND CATEGORY = $category
   """.query[Pet]
 
-  def selectAll : Query0[Pet] = sql"""
+  def selectAll(implicit lh: LogHandler): Query0[Pet] = sql"""
     SELECT NAME, CATEGORY, BIO, STATUS, TAGS, PHOTO_URLS, ID
     FROM PET
     ORDER BY NAME
   """.query
 
-  def selectByStatus(statuses: NonEmptyList[PetStatus]) : Query0[Pet] = (
-    sql"""
+  def selectByStatus(statuses: NonEmptyList[PetStatus])(implicit lh: LogHandler): Query0[Pet] =
+    (
+      sql"""
       SELECT NAME, CATEGORY, BIO, STATUS, TAGS, PHOTO_URLS, ID
       FROM PET
       WHERE """ ++ Fragments.in(fr"STATUS", statuses)
-  ).query
+    ).query
 
-  def selectTagLikeString(tags: NonEmptyList[String]) : Query0[Pet] = {
+  def selectTagLikeString(tags: NonEmptyList[String]): Query0[Pet] = {
     /* Handle dynamic construction of query based on multiple parameters */
 
     /* To piggyback off of comment of above reference about tags implementation, findByTag uses LIKE for partial matching
@@ -70,22 +72,26 @@ private object PetSQL {
   }
 }
 
-class DoobiePetRepositoryInterpreter[F[_]: Monad](val xa: Transactor[F])
+class DoobiePetRepositoryInterpreter[F[_]: Monad](logger: Logger[F], val xa: Transactor[F])
     extends PetRepositoryAlgebra[F] {
   import PetSQL._
+
+  private implicit val logHandler: LogHandler = Log4CatsLogHandler[F](logger)
 
   def create(pet: Pet): F[Pet] =
     insert(pet).withUniqueGeneratedKeys[Long]("ID").map(id => pet.copy(id = id.some)).transact(xa)
 
-  def update(pet: Pet): F[Option[Pet]] = OptionT.fromOption[ConnectionIO](pet.id).semiflatMap(id =>
-    PetSQL.update(pet, id).run.as(pet)
-  ).value.transact(xa)
+  def update(pet: Pet): F[Option[Pet]] =
+    OptionT
+      .fromOption[ConnectionIO](pet.id)
+      .semiflatMap(id => PetSQL.update(pet, id).run.as(pet))
+      .value
+      .transact(xa)
 
   def get(id: Long): F[Option[Pet]] = select(id).option.transact(xa)
 
-  def delete(id: Long): F[Option[Pet]] = OptionT(get(id)).semiflatMap(pet =>
-    PetSQL.delete(id).run.transact(xa).as(pet)
-  ).value
+  def delete(id: Long): F[Option[Pet]] =
+    OptionT(get(id)).semiflatMap(pet => PetSQL.delete(id).run.transact(xa).as(pet)).value
 
   def findByNameAndCategory(name: String, category: String): F[Set[Pet]] =
     selectByNameAndCategory(name, category).to[List].transact(xa).map(_.toSet)
@@ -101,6 +107,6 @@ class DoobiePetRepositoryInterpreter[F[_]: Monad](val xa: Transactor[F])
 }
 
 object DoobiePetRepositoryInterpreter {
-  def apply[F[_]: Monad](xa: Transactor[F]): DoobiePetRepositoryInterpreter[F] =
-    new DoobiePetRepositoryInterpreter(xa)
+  def apply[F[_]: Monad](logger: Logger[F], xa: Transactor[F]): DoobiePetRepositoryInterpreter[F] =
+    new DoobiePetRepositoryInterpreter(logger, xa)
 }

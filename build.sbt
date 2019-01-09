@@ -9,9 +9,10 @@ val CatsVersion            = "1.5.0"
 val CirceVersion           = "0.11.0"
 val DoobieVersion          = "0.6.0"
 val EnumeratumVersion      = "1.5.13"
-val EnumeratumCirceVersion = "1.5.19"
-val H2Version              = "1.4.197"
-val Http4sVersion          = "0.20.0-M4"
+val EnumeratumCirceVersion = "1.5.17"
+val H2Version              = "1.4.196"
+val Http4sVersion          = "0.18.19"
+val Log4CatsVersion        = "0.2.0"
 val LogbackVersion         = "1.2.3"
 val ScalaCheckVersion      = "1.14.0"
 val ScalaTestVersion       = "3.0.5"
@@ -21,6 +22,7 @@ val TsecVersion            = "0.0.1-RC1"
 
 libraryDependencies ++= Seq(
   "org.typelevel"         %% "cats-core"             % CatsVersion,
+  "io.chrisdavenport"     %% "log4cats-slf4j"       % Log4CatsVersion,
   "io.circe"              %% "circe-generic"          % CirceVersion,
   "io.circe"              %% "circe-literal"          % CirceVersion,
   "io.circe"              %% "circe-generic-extras"   % CirceVersion,
