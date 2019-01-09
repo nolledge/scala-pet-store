@@ -7,7 +7,6 @@ import cats.data.OptionT
 import cats.implicits._
 import doobie._
 import doobie.implicits._
-import io.chrisdavenport.log4cats.Logger
 import io.github.pauljamescleary.petstore.domain.orders
 import orders.{Order, OrderRepositoryAlgebra, OrderStatus}
 
@@ -38,12 +37,10 @@ private object OrderSQL {
 }
 
 class DoobieOrderRepositoryInterpreter[F[_]: Monad](
-    val xa: Transactor[F],
-    logger: Logger[F]
+    val xa: Transactor[F])(
+    implicit lh: LogHandler
 ) extends OrderRepositoryAlgebra[F] {
   import OrderSQL._
-
-  private implicit val logHandler: LogHandler = Log4CatsLogHandler[F](logger)
 
   def create(order: Order): F[Order] =
     insert(order)
@@ -60,6 +57,6 @@ class DoobieOrderRepositoryInterpreter[F[_]: Monad](
 }
 
 object DoobieOrderRepositoryInterpreter {
-  def apply[F[_]: Monad](xa: Transactor[F], logger: Logger[F]): DoobieOrderRepositoryInterpreter[F] =
-    new DoobieOrderRepositoryInterpreter(xa, logger)
+  def apply[F[_]: Monad](xa: Transactor[F])(implicit logHandler: LogHandler): DoobieOrderRepositoryInterpreter[F] =
+    new DoobieOrderRepositoryInterpreter(xa)
 }

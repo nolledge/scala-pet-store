@@ -7,7 +7,6 @@ import doobie._
 import doobie.implicits._
 import io.github.pauljamescleary.petstore.domain.pets.{Pet, PetRepositoryAlgebra, PetStatus}
 import SQLPagination._
-import io.chrisdavenport.log4cats.Logger
 
 private object PetSQL {
   /* We require type StatusMeta to handle our ADT Status */
@@ -59,7 +58,7 @@ private object PetSQL {
       WHERE """ ++ Fragments.in(fr"STATUS", statuses)
     ).query
 
-  def selectTagLikeString(tags: NonEmptyList[String]): Query0[Pet] = {
+  def selectTagLikeString(tags: NonEmptyList[String])(implicit lh: LogHandler): Query0[Pet] = {
     /* Handle dynamic construction of query based on multiple parameters */
 
     /* To piggyback off of comment of above reference about tags implementation, findByTag uses LIKE for partial matching
@@ -72,11 +71,10 @@ private object PetSQL {
   }
 }
 
-class DoobiePetRepositoryInterpreter[F[_]: Monad](logger: Logger[F], val xa: Transactor[F])
+class DoobiePetRepositoryInterpreter[F[_]: Monad]( val xa: Transactor[F])(implicit lh: LogHandler)
     extends PetRepositoryAlgebra[F] {
   import PetSQL._
 
-  private implicit val logHandler: LogHandler = Log4CatsLogHandler[F](logger)
 
   def create(pet: Pet): F[Pet] =
     insert(pet).withUniqueGeneratedKeys[Long]("ID").map(id => pet.copy(id = id.some)).transact(xa)
@@ -107,6 +105,6 @@ class DoobiePetRepositoryInterpreter[F[_]: Monad](logger: Logger[F], val xa: Tra
 }
 
 object DoobiePetRepositoryInterpreter {
-  def apply[F[_]: Monad](logger: Logger[F], xa: Transactor[F]): DoobiePetRepositoryInterpreter[F] =
-    new DoobiePetRepositoryInterpreter(logger, xa)
+  def apply[F[_]: Monad]( xa: Transactor[F])(implicit logHandler: LogHandler): DoobiePetRepositoryInterpreter[F] =
+    new DoobiePetRepositoryInterpreter(xa)
 }

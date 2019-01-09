@@ -7,7 +7,6 @@ import doobie._
 import doobie.implicits._
 import io.github.pauljamescleary.petstore.domain.users.{User, UserRepositoryAlgebra}
 import SQLPagination._
-import io.chrisdavenport.log4cats.Logger
 
 private object UserSQL {
   def insert(user: User)(implicit lh: LogHandler): Update0 = sql"""
@@ -43,12 +42,11 @@ private object UserSQL {
   """.query
 }
 
-class DoobieUserRepositoryInterpreter[F[_]: Monad](logger: Logger[F], val xa: Transactor[F])
+class DoobieUserRepositoryInterpreter[F[_]: Monad](val xa: Transactor[F])(implicit lh: LogHandler)
   extends UserRepositoryAlgebra[F] {
 
   import UserSQL._
 
-  private implicit val logHandler: LogHandler = Log4CatsLogHandler[F](logger)
 
   def create(user: User): F[User] =
     insert(user).withUniqueGeneratedKeys[Long]("ID").map(id => user.copy(id = id.some)).transact(xa)
@@ -73,7 +71,7 @@ class DoobieUserRepositoryInterpreter[F[_]: Monad](logger: Logger[F], val xa: Tr
 }
 
 object DoobieUserRepositoryInterpreter {
-  def apply[F[_]: Monad](logger: Logger[F], xa: Transactor[F]): DoobieUserRepositoryInterpreter[F] =
-    new DoobieUserRepositoryInterpreter(logger, xa)
+  def apply[F[_]: Monad](xa: Transactor[F])(implicit lh: LogHandler): DoobieUserRepositoryInterpreter[F] =
+    new DoobieUserRepositoryInterpreter(xa)
 }
 

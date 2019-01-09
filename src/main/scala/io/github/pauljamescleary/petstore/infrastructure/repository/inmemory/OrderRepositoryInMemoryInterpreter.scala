@@ -23,10 +23,12 @@ class OrderRepositoryInMemoryInterpreter[F[_]: Applicative](logger: Logger[F])
   }
 
   def get(orderId: Long): F[Option[Order]] =
-    logger.debug(s"Getting order with id $orderId").map(_ => cache.get(orderId))
+    logger.debug(s"Getting order with id $orderId")
+      .map(_ => cache.get(orderId))
 
   def delete(orderId: Long): F[Option[Order]] =
-    logger.info(s"Deleting order with id $orderId").map(_ => cache.remove(orderId))
+    logger.info(s"Deleting order with id $orderId")
+      .map(_ => cache.remove(orderId))
 }
 
 object OrderRepositoryInMemoryInterpreter {

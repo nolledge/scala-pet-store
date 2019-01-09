@@ -2,18 +2,18 @@ package io.github.pauljamescleary.petstore.domain.users
 
 import cats._
 import cats.data._
-import cats.syntax.functor._
+import cats.implicits._
 import io.chrisdavenport.log4cats.Logger
 import io.github.pauljamescleary.petstore.domain.{UserAlreadyExistsError, UserNotFoundError}
 
-class UserService[F[_]: Monad](
+class UserService[F[_]: Monad: Functor](
     logger: Logger[F],
     userRepo: UserRepositoryAlgebra[F],
     validation: UserValidationAlgebra[F]) {
 
   def createUser(user: User): EitherT[F, UserAlreadyExistsError, User] =
     for {
-      _ <- logger.info(s"Attempting to create user $user")
+      _ <- EitherT.liftF(logger.info(s"Attempting to create user $user"))
       _ <- validation.doesNotExist(user)
       saved <- EitherT.liftF(userRepo.create(user))
     } yield saved
@@ -30,12 +30,12 @@ class UserService[F[_]: Monad](
 
   def deleteUser(userId: Long): F[Unit] = for {
     _ <- logger.info(s"Deleting user with id $userId")
-    _ <- userRepo.delete(userId).as(())
+    _ <- userRepo.delete(userId)
   }  yield ()
 
   def deleteByUserName(userName: String): F[Unit] = for {
     _ <- logger.info(s"Deleting user by name $userName")
-    _ <- userRepo.deleteByUserName(userName).as(())
+    _ <- userRepo.deleteByUserName(userName)
     } yield ()
 
   def update(user: User): EitherT[F, UserNotFoundError.type, User] =
@@ -51,8 +51,9 @@ class UserService[F[_]: Monad](
 
 object UserService {
   def apply[F[_]: Monad](
+      logger: Logger[F],
       repository: UserRepositoryAlgebra[F],
-      validation: UserValidationAlgebra[F],
-      logger: Logger[F]): UserService[F] =
+      validation: UserValidationAlgebra[F]
+      ): UserService[F] =
     new UserService[F](logger, repository, validation)
 }

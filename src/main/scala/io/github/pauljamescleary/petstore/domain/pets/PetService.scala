@@ -14,13 +14,13 @@ import io.github.pauljamescleary.petstore.domain.{PetAlreadyExistsError, PetNotF
   * @tparam F - this is the container for the things we work with, could be scala.concurrent.Future, Option, anything
   *           as long as it is a Monad
   */
-class PetService[F[_]](
+class PetService[F[_]: Monad](
     logger: Logger[F],
     repository: PetRepositoryAlgebra[F],
     validation: PetValidationAlgebra[F]) {
   import cats.syntax.all._
 
-  def create(pet: Pet)(implicit M: Monad[F]): EitherT[F, PetAlreadyExistsError, Pet] =
+  def create(pet: Pet): EitherT[F, PetAlreadyExistsError, Pet] =
     for {
       _ <- EitherT.liftF(logger.info(s"Creating pet $pet"))
       _ <- validation.doesNotExist(pet)
@@ -28,21 +28,21 @@ class PetService[F[_]](
     } yield saved
 
   /* Could argue that we could make this idempotent on put and not check if the pet exists */
-  def update(pet: Pet)(implicit M: Monad[F]): EitherT[F, PetNotFoundError.type, Pet] =
+  def update(pet: Pet): EitherT[F, PetNotFoundError.type, Pet] =
     for {
       _ <- EitherT.liftF(logger.info(s"Updating pet $pet"))
       _ <- validation.exists(pet.id)
       saved <- EitherT.fromOptionF(repository.update(pet), PetNotFoundError)
     } yield saved
 
-  def get(id: Long)(implicit M: Monad[F]): EitherT[F, PetNotFoundError.type, Pet] =
+  def get(id: Long): EitherT[F, PetNotFoundError.type, Pet] =
     for {
       _ <- EitherT.liftF(logger.info(s"Fetching pet with id $id"))
       pet <- EitherT.fromOptionF(repository.get(id), PetNotFoundError)
     } yield pet
 
   /* In some circumstances we may care if we actually delete the pet; here we are idempotent and do not care */
-  def delete(id: Long)(implicit M: Monad[F]): F[Unit] =
+  def delete(id: Long): F[Unit] =
     for {
       _ <- logger.info(s"Deleting pet with id $id")
       _ <- repository.delete(id).as(())
